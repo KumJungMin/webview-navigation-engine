@@ -28,21 +28,21 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
-import { navigationEngine } from 'webview-navigation-engine';
+import { ref } from "vue";
+import { navigationEngine } from "webview-navigation-engine";
 
 function onBack() {
   navigationEngine.handleBack();
 }
 
 function goNext() {
-  navigationEngine.navigateTo("next");
+  navigationEngine.navigateTo("MainPage");
 }
 
 const popupVisible = ref(false);
 function openPopup() {
   popupVisible.value = true;
-  navigationEngine.openOverlay({ id: "popup", onBack: () => popupVisible.value=false });
+  navigationEngine.openOverlay({ id: "popup", onBack: () => (popupVisible.value = false) });
 }
 function closePopup() {
   popupVisible.value = false;
@@ -52,7 +52,10 @@ function closePopup() {
 const fullscreenVisible = ref(false);
 function openFullscreen() {
   fullscreenVisible.value = true;
-  navigationEngine.openOverlay({ id: "fullscreen", onBack: () => fullscreenVisible.value=false });
+  navigationEngine.openOverlay({
+    id: "fullscreen",
+    onBack: () => (fullscreenVisible.value = false),
+  });
 }
 function closeFullscreen() {
   fullscreenVisible.value = false;
@@ -61,23 +64,84 @@ function closeFullscreen() {
 </script>
 
 <style scoped>
-.page { display:flex; flex-direction:column; height:100vh; font-family:sans-serif; }
-.header { padding:16px; border-bottom:1px solid #ddd; display:flex; gap:12px; align-items:center; }
-.back { background:none; border:none; font-size:18px; cursor:pointer; }
-.content { flex:1; display:flex; justify-content:center; align-items:center; }
-.footer { padding:16px; display:flex; flex-direction:column; gap:8px; }
-.next { padding:12px; border-radius:8px; border:none; background:#007aff; color:white; cursor:pointer; }
-.popup, .fullscreen { padding:12px; border-radius:8px; border:1px solid #007aff; background:white; color:#007aff; cursor:pointer; }
+.page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  font-family: sans-serif;
+}
+.header {
+  padding: 16px;
+  border-bottom: 1px solid #ddd;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.back {
+  background: none;
+  border: none;
+  font-size: 18px;
+  cursor: pointer;
+}
+.content {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+.footer {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.next {
+  padding: 12px;
+  border-radius: 8px;
+  border: none;
+  background: #007aff;
+  color: white;
+  cursor: pointer;
+}
+.popup,
+.fullscreen {
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid #007aff;
+  background: white;
+  color: #007aff;
+  cursor: pointer;
+}
 
 .overlay {
-  position:fixed; top:0; left:0; width:100%; height:100%;
-  display:flex; justify-content:center; align-items:center;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
-.popup { background:rgba(0,0,0,0.4); }
-.popup-content { background:white; padding:20px; border-radius:12px; }
-.fullscreen { background:white; flex-direction:column; }
+.popup {
+  background: rgba(0, 0, 0, 0.4);
+}
+.popup-content {
+  background: white;
+  padding: 20px;
+  border-radius: 12px;
+}
+.fullscreen {
+  background: white;
+  flex-direction: column;
+}
 .close-fullscreen {
-  position:absolute; top:16px; right:16px; background:none; border:none;
-  font-size:20px; cursor:pointer;
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
 }
 </style>
