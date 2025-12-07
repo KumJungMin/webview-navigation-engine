@@ -1,283 +1,268 @@
-import type {
-  NavigationEntry,
-  NavigationOptions,
-  NavigationPriority,
-  NavigationListener,
-  FlowConfig,
-  NavigationEngineConfig,
-} from "./types";
-
 /**
- * Core navigation engine for WebView environments
- * Supports flow-based navigation, priority handling, and custom history stack
+ * src/core/NavigationEngine.ts
  */
+
+export type PageId = string;
+
+export interface FlowDefinition {
+  name: string;
+  steps: PageId[];
+}
+
+export interface NavigationEngineConfig {
+  mainPage: PageId;
+  flows?: FlowDefinition[];
+}
+
+export interface Overlay {
+  id: string;
+  onBack: () => void;
+}
+
+export interface NavState {
+  current: PageId | null;
+  historyStack: PageId[];
+  overlayStack: Overlay[];
+}
+
+interface ActiveFlowContext {
+  name: string;
+  steps: PageId[];
+  currentStepIndex: number;
+  entryPageId: PageId | null;
+  lockFirstStepBack: boolean;
+}
+
+type NavListener = (state: NavState) => void;
+
 export class NavigationEngine {
-  private history: NavigationEntry[] = [];
-  private currentIndex: number = -1;
-  private listeners: Set<NavigationListener> = new Set();
-  private flows: Map<string, FlowConfig> = new Map();
-  private config: Required<NavigationEngineConfig>;
+  private mainPage: PageId | null = null;
+  private flows: FlowDefinition[] = [];
+  private historyStack: PageId[] = [];
+  private overlayStack: Overlay[] = [];
+  private activeFlow: ActiveFlowContext | null = null;
+  private listeners = new Set<NavListener>();
+  private isInitialized = false;
 
-  constructor(config: NavigationEngineConfig = {}) {
-    this.config = {
-      enableSessionStorage: config.enableSessionStorage ?? true,
-      sessionStorageKey: config.sessionStorageKey ?? "nav-engine-history",
-      defaultPriority: config.defaultPriority ?? NavigationPriority.NORMAL,
+  // ------------------------------------------------------
+  // Public API
+  // ------------------------------------------------------
+
+  setup(config: NavigationEngineConfig, initialPage?: PageId) {
+    this.mainPage = config.mainPage;
+    this.flows = config.flows ?? [];
+
+    const firstPage = initialPage ?? this.mainPage;
+    if (!firstPage) throw new Error("NavigationEngine: mainPage required.");
+
+    this.historyStack = [firstPage];
+    this.activeFlow = this.createFlowContextForPage(firstPage, null, "push");
+    this.isInitialized = true;
+    this.notify();
+  }
+
+  getState(): NavState {
+    return {
+      current: this.getCurrentPage(),
+      historyStack: [...this.historyStack],
+      overlayStack: [...this.overlayStack],
     };
-
-    if (this.config.enableSessionStorage && typeof window !== "undefined") {
-      this.restoreFromSessionStorage();
-    }
   }
 
-  /**
-   * Navigate to a new route
-   */
-  navigate(route: string, options: NavigationOptions = {}): void {
-    const priority = options.priority ?? this.config.defaultPriority;
-    const entry: NavigationEntry = {
-      id: this.generateId(),
-      route,
-      state: options.state,
-      priority,
-      timestamp: Date.now(),
-      flowId: options.flowId,
-    };
-
-    if (options.replace && this.history.length > 0) {
-      this.history[this.currentIndex] = entry;
-    } else if (options.skipHistory) {
-      // Just notify listeners without adding to history
-      this.notifyListeners(entry);
-      return;
-    } else {
-      // Remove future entries if we're not at the end
-      if (this.currentIndex < this.history.length - 1) {
-        this.history = this.history.slice(0, this.currentIndex + 1);
-      }
-      this.history.push(entry);
-      this.currentIndex = this.history.length - 1;
-    }
-
-    this.notifyListeners(entry);
-    this.saveToSessionStorage();
-  }
-
-  /**
-   * Navigate back in history
-   */
-  back(): boolean {
-    if (this.currentIndex <= 0) {
-      return false;
-    }
-
-    // Handle priority-based navigation
-    const current = this.history[this.currentIndex];
-    if (current.priority === NavigationPriority.FULLSCREEN) {
-      // Always allow closing fullscreen
-      this.currentIndex--;
-      const entry = this.history[this.currentIndex];
-      this.notifyListeners(entry);
-      this.saveToSessionStorage();
-      return true;
-    }
-
-    if (current.priority === NavigationPriority.POPUP) {
-      // Check if we should skip popup or close it
-      let targetIndex = this.currentIndex - 1;
-      while (
-        targetIndex >= 0 &&
-        this.history[targetIndex].priority === NavigationPriority.POPUP
-      ) {
-        targetIndex--;
-      }
-
-      if (targetIndex < 0) {
-        return false;
-      }
-
-      this.currentIndex = targetIndex;
-      const entry = this.history[this.currentIndex];
-      this.notifyListeners(entry);
-      this.saveToSessionStorage();
-      return true;
-    }
-
-    // Normal navigation
-    this.currentIndex--;
-    const entry = this.history[this.currentIndex];
-    this.notifyListeners(entry);
-    this.saveToSessionStorage();
-    return true;
-  }
-
-  /**
-   * Navigate forward in history
-   */
-  forward(): boolean {
-    if (this.currentIndex >= this.history.length - 1) {
-      return false;
-    }
-
-    this.currentIndex++;
-    const entry = this.history[this.currentIndex];
-    this.notifyListeners(entry);
-    this.saveToSessionStorage();
-    return true;
-  }
-
-  /**
-   * Get current navigation entry
-   */
-  getCurrent(): NavigationEntry | null {
-    if (this.currentIndex < 0 || this.currentIndex >= this.history.length) {
-      return null;
-    }
-    return this.history[this.currentIndex];
-  }
-
-  /**
-   * Get all history entries
-   */
-  getHistory(): readonly NavigationEntry[] {
-    return [...this.history];
-  }
-
-  /**
-   * Check if can go back
-   */
-  canGoBack(): boolean {
-    if (this.currentIndex <= 0) {
-      return false;
-    }
-
-    const current = this.history[this.currentIndex];
-    if (current.priority === NavigationPriority.FULLSCREEN) {
-      return true;
-    }
-
-    if (current.priority === NavigationPriority.POPUP) {
-      let targetIndex = this.currentIndex - 1;
-      while (
-        targetIndex >= 0 &&
-        this.history[targetIndex].priority === NavigationPriority.POPUP
-      ) {
-        targetIndex--;
-      }
-      return targetIndex >= 0;
-    }
-
-    return this.currentIndex > 0;
-  }
-
-  /**
-   * Check if can go forward
-   */
-  canGoForward(): boolean {
-    return this.currentIndex < this.history.length - 1;
-  }
-
-  /**
-   * Register a flow configuration
-   */
-  registerFlow(config: FlowConfig): void {
-    this.flows.set(config.id, config);
-  }
-
-  /**
-   * Navigate within a flow
-   */
-  navigateFlow(flowId: string, state: string, options: Omit<NavigationOptions, "flowId"> = {}): void {
-    const flow = this.flows.get(flowId);
-    if (!flow) {
-      throw new Error(`Flow ${flowId} not found`);
-    }
-
-    if (!flow.states[state]) {
-      throw new Error(`State ${state} not found in flow ${flowId}`);
-    }
-
-    const route = `${flowId}:${state}`;
-    this.navigate(route, { ...options, flowId });
-  }
-
-  /**
-   * Add navigation listener
-   */
-  addListener(listener: NavigationListener): () => void {
+  subscribe(listener: NavListener): () => void {
     this.listeners.add(listener);
-    return () => {
-      this.listeners.delete(listener);
+    listener(this.getState());
+    return () => this.listeners.delete(listener);
+  }
+
+  navigateTo(pageId: PageId, options?: { method?: "push" | "replace" }) {
+    this.ensureInitialized();
+    const method = options?.method ?? "push";
+    const prevPage = this.getCurrentPage();
+
+    if (method === "replace" && this.historyStack.length > 0) {
+      this.historyStack[this.historyStack.length - 1] = pageId;
+    } else {
+      this.historyStack.push(pageId);
+    }
+
+    this.activeFlow = this.createFlowContextForPage(pageId, prevPage, method);
+    this.notify();
+  }
+
+  openOverlay(overlay: Overlay) {
+    this.overlayStack.push(overlay);
+    this.notify();
+  }
+
+  closeOverlay(id?: string) {
+    if (id) {
+      this.overlayStack = this.overlayStack.filter((o) => o.id !== id);
+    } else {
+      this.overlayStack.pop();
+    }
+    this.notify();
+  }
+
+  /**
+   * exitFlow:
+   * 플로우를 초기화하고 첫 페이지로 이동합니다.
+   * - entryPageId를 유지하여, 초기화 후 뒤로가기 시 진입 페이지(Main)로 돌아갑니다.
+   */
+  exitFlow(flowName?: string) {
+    this.ensureInitialized();
+    if (!this.activeFlow) return;
+    if (flowName && this.activeFlow.name !== flowName) return;
+
+    const firstStep = this.activeFlow.steps[0];
+
+    // 스택 정리: 현재 Flow에 속한 페이지들을 스택에서 제거
+    // 예: [Main, Input, Detail] -> [Main]
+    while (this.historyStack.length > 0) {
+      const top = this.historyStack[this.historyStack.length - 1];
+      if (this.activeFlow.steps.includes(top)) {
+        this.historyStack.pop();
+      } else {
+        break;
+      }
+    }
+
+    // 첫 스텝 다시 푸시 -> [Main, Input]
+    this.historyStack.push(firstStep);
+
+    // 컨텍스트 리셋 (entryPageId 유지)
+    this.activeFlow = {
+      ...this.activeFlow,
+      currentStepIndex: 0,
+      lockFirstStepBack: false, // 뒤로가기 잠금 해제 (Main으로 갈 수 있게)
+    };
+
+    this.notify();
+  }
+
+  /**
+   * handleBack:
+   * 뒤로가기 로직의 핵심 진입점
+   */
+  handleBack() {
+    this.ensureInitialized();
+
+    // 1. Overlay 우선 닫기
+    const topOverlay = this.overlayStack.pop();
+    if (topOverlay) {
+      topOverlay.onBack();
+      this.notify();
+      return;
+    }
+
+    const current = this.getCurrentPage();
+    if (!current) return;
+
+    // 2. Flow 내부 로직
+    if (this.tryHandleFlowBack(current)) {
+      this.notify();
+      return;
+    }
+
+    // 3. Main Page 방어 (이동하지 않음 -> Adapter가 URL 복구)
+    if (current === this.mainPage) {
+      // console.log("Blocked back on Main Page");
+      return;
+    }
+
+    // 4. 일반 페이지 Pop
+    if (this.historyStack.length > 1) {
+      this.historyStack.pop();
+
+      const newCurrent = this.getCurrentPage();
+      // 일반 이동 시 activeFlow 재계산 (Flow 밖으로 나가는 경우 등 고려)
+      this.activeFlow = newCurrent
+        ? this.createFlowContextForPage(newCurrent, null, "replace")
+        : null;
+
+      this.notify();
+    }
+  }
+
+  // ------------------------------------------------------
+  // Internal Helpers
+  // ------------------------------------------------------
+
+  private getCurrentPage(): PageId | null {
+    if (this.historyStack.length === 0) return null;
+    return this.historyStack[this.historyStack.length - 1];
+  }
+
+  private findFlowByPage(pageId: PageId | null): FlowDefinition | null {
+    if (!pageId) return null;
+    return this.flows.find((flow) => flow.steps.includes(pageId)) ?? null;
+  }
+
+  private createFlowContextForPage(
+    pageId: PageId,
+    prevPage: PageId | null,
+    method: "push" | "replace"
+  ): ActiveFlowContext | null {
+    const flow = this.findFlowByPage(pageId);
+    if (!flow) return null;
+
+    const index = flow.steps.indexOf(pageId);
+
+    // Flow 유지
+    if (this.activeFlow && this.activeFlow.name === flow.name) {
+      return { ...this.activeFlow, steps: flow.steps, currentStepIndex: index };
+    }
+
+    // 새 Flow 진입
+    const entryPageId = method === "push" ? prevPage : null;
+    return {
+      name: flow.name,
+      steps: flow.steps,
+      currentStepIndex: index,
+      entryPageId,
+      lockFirstStepBack: false,
     };
   }
 
-  /**
-   * Clear all history
-   */
-  clearHistory(): void {
-    this.history = [];
-    this.currentIndex = -1;
-    this.saveToSessionStorage();
-  }
+  private tryHandleFlowBack(current: PageId): boolean {
+    const ctx = this.activeFlow;
+    if (!ctx || !ctx.steps.includes(current)) return false;
 
-  /**
-   * Remove entries by flow ID
-   */
-  removeFlowEntries(flowId: string): void {
-    this.history = this.history.filter((entry) => entry.flowId !== flowId);
-    if (this.currentIndex >= this.history.length) {
-      this.currentIndex = this.history.length - 1;
+    const idx = ctx.steps.indexOf(current);
+    if (idx < 0) return false;
+
+    // Case 1: Flow 중간 (Detail -> Input)
+    if (idx > 0) {
+      this.historyStack.pop(); // Stack Pop 필수
+      this.activeFlow = { ...ctx, currentStepIndex: idx - 1 };
+      return true;
     }
-    this.saveToSessionStorage();
-  }
 
-  private notifyListeners(entry: NavigationEntry): void {
-    this.listeners.forEach((listener) => {
-      try {
-        listener(entry);
-      } catch (error) {
-        console.error("Error in navigation listener:", error);
+    // Case 2: Flow 첫 페이지 (Input)
+    if (idx === 0) {
+      if (ctx.lockFirstStepBack) return true; // 막힘
+
+      // 진입 페이지가 있다면 거기로 복귀
+      if (ctx.entryPageId) {
+        this.historyStack.pop(); // [Main, Input] -> [Main]
+        this.activeFlow = null; // Flow 종료
+        return true;
       }
-    });
+
+      return true; // 갈 곳 없으면 현상 유지
+    }
+
+    return false;
   }
 
-  private generateId(): string {
-    return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  private notify() {
+    const snapshot = this.getState();
+    this.listeners.forEach((fn) => fn(snapshot));
   }
 
-  private saveToSessionStorage(): void {
-    if (!this.config.enableSessionStorage || typeof window === "undefined") {
-      return;
-    }
-
-    try {
-      const data = {
-        history: this.history,
-        currentIndex: this.currentIndex,
-      };
-      window.sessionStorage.setItem(this.config.sessionStorageKey, JSON.stringify(data));
-    } catch (error) {
-      console.warn("Failed to save navigation state to sessionStorage:", error);
-    }
-  }
-
-  private restoreFromSessionStorage(): void {
-    if (!this.config.enableSessionStorage || typeof window === "undefined") {
-      return;
-    }
-
-    try {
-      const data = window.sessionStorage.getItem(this.config.sessionStorageKey);
-      if (data) {
-        const parsed = JSON.parse(data);
-        if (Array.isArray(parsed.history) && typeof parsed.currentIndex === "number") {
-          this.history = parsed.history;
-          this.currentIndex = parsed.currentIndex;
-        }
-      }
-    } catch (error) {
-      console.warn("Failed to restore navigation state from sessionStorage:", error);
-    }
+  private ensureInitialized() {
+    if (!this.isInitialized) throw new Error("NavigationEngine not setup.");
   }
 }
 
+export const navigationEngine = new NavigationEngine();

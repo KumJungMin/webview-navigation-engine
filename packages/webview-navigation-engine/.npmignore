@@ -1,9 +1,0 @@
-src
-tsconfig.json
-rollup.config.js
-.eslintrc.cjs
-.prettierrc
-node_modules
-*.log
-*.tsbuildinfo
-

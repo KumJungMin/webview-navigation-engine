@@ -1,67 +1,19 @@
 {
   "name": "webview-navigation-engine",
-  "version": "0.1.0",
-  "description": "A fully controllable navigation system for WebView environments",
-  "main": "./dist/index.cjs.js",
-  "module": "./dist/index.esm.js",
-  "types": "./dist/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.esm.js",
-      "require": "./dist/index.cjs.js"
-    },
-    "./vue": {
-      "types": "./dist/adapters/vue.d.ts",
-      "import": "./dist/adapters/vue.esm.js",
-      "require": "./dist/adapters/vue.cjs.js"
-    },
-    "./react": {
-      "types": "./dist/adapters/react.d.ts",
-      "import": "./dist/adapters/react.esm.js",
-      "require": "./dist/adapters/react.cjs.js"
-    }
+  "version": "1.0.1",
+  "main": "dist/index.cjs.js",
+  "module": "dist/index.esm.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "rollup -c"
   },
   "files": [
-    "dist",
-    "README.md"
+    "dist"
   ],
-  "keywords": [
-    "webview",
-    "navigation",
-    "router",
-    "state-machine",
-    "flow"
-  ],
-  "author": "",
-  "license": "MIT",
-  "scripts": {
-    "build": "npm run clean && rollup -c && tsc --emitDeclarationOnly",
-    "dev": "rollup -c --watch",
-    "type-check": "tsc --noEmit",
-    "clean": "rm -rf dist",
-    "lint": "eslint src --ext .ts"
-  },
+  "dependencies": {},
   "devDependencies": {
-    "@rollup/plugin-typescript": "^11.1.5",
-    "@types/node": "^20.11.5",
-    "@typescript-eslint/eslint-plugin": "^6.19.0",
-    "@typescript-eslint/parser": "^6.19.0",
-    "eslint": "^8.56.0",
-    "rollup": "^4.9.0",
-    "typescript": "^5.3.3"
-  },
-  "peerDependencies": {
-    "react": "^18.0.0 || ^17.0.0",
-    "vue": "^3.0.0"
-  },
-  "peerDependenciesMeta": {
-    "react": {
-      "optional": true
-    },
-    "vue": {
-      "optional": true
-    }
+    "typescript": "^5.0.0",
+    "rollup": "^4.0.0",
+    "rollup-plugin-typescript2": "^0.36.0"
   }
 }
-

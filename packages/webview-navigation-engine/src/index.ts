@@ -1,3 +1,3 @@
+// src/index.ts
 export * from "./core/NavigationEngine";
-export * from "./core/types";
-
+export * from "./adapters/vue";

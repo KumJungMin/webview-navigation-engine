@@ -1,34 +1,14 @@
-import typescript from "@rollup/plugin-typescript";
+import typescript from 'rollup-plugin-typescript2';
 
-const createConfig = (input, output, format) => ({
-  input,
-  output: {
-    file: output,
-    format,
-    sourcemap: true,
-    exports: "named",
-  },
+export default {
+  input: 'src/index.ts',
+  output: [
+    { file: 'dist/index.esm.js', format: 'esm', sourcemap: true },
+    { file: 'dist/index.cjs.js', format: 'cjs', sourcemap: true }
+  ],
   plugins: [
     typescript({
-      tsconfig: "./tsconfig.json",
-      declaration: false,
-      declarationMap: false,
-    }),
-  ],
-  external: (id) => !id.startsWith(".") && !id.startsWith("/"),
-});
-
-// Main entry points
-const mainInputs = {
-  index: "src/index.ts",
-  "adapters/vue": "src/adapters/vue.ts",
-  "adapters/react": "src/adapters/react.ts",
+      tsconfig: 'tsconfig.json'
+    })
+  ]
 };
-
-export default Object.entries(mainInputs).flatMap(([name, input]) => [
-  // ESM build
-  createConfig(input, `dist/${name}.esm.js`, "es"),
-  // CJS build
-  createConfig(input, `dist/${name}.cjs.js`, "cjs"),
-]);
-
